@@ -108,6 +108,7 @@ const handleNewMessage = (data) => {
   log(`Mensagem "${data.content}" de ${data.senderId} adicionada à fila.`);
 
   logicalClock++;
+
   const ackMessage = {
     type: "ACK",
     originalTimestamp: data.timestamp,
@@ -115,6 +116,7 @@ const handleNewMessage = (data) => {
     ackSenderId: myId,
     timestamp: logicalClock,
   };
+
   multicast(ackMessage);
 };
 
@@ -167,6 +169,7 @@ const server = createServer((socket) => {
   socket.on("data", (data) => {
     buffer += data.toString();
     let boundary = buffer.indexOf("\n");
+
     while (boundary !== -1) {
       const jsonStr = buffer.substring(0, boundary);
       buffer = buffer.substring(boundary + 1);
