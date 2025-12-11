@@ -1,0 +1,9 @@
+flask
+redis
+flask-socketio
+eventlet
+gunicorn
+python-dotenv
+openai
+requests
+

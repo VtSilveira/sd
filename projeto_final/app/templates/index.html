@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Leilão Distribuído</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+  </head>
+  <body class="container mt-4">
+    <h1>Plataforma de Leilão Online</h1>
+
+    <div class="row mt-4">
+      <div class="col-md-4">
+        <h3>Criar Leilão</h3>
+        <form id="createAuctionForm">
+          <div class="mb-3">
+            <label>Título</label>
+            <input type="text" class="form-control" id="title" required />
+          </div>
+          <div class="mb-3">
+            <label>Descrição</label>
+            <input type="text" class="form-control" id="description" required />
+          </div>
+          <div class="mb-3">
+            <label>Preço Inicial</label>
+            <input
+              type="number"
+              class="form-control"
+              id="start_price"
+              required
+            />
+          </div>
+          <div class="mb-3">
+            <label>Duração (segundos)</label>
+            <input
+              type="number"
+              class="form-control"
+              id="duration"
+              value="60"
+              required
+            />
+          </div>
+          <div class="mb-3">
+            <label>Seu Nome</label>
+            <input type="text" class="form-control" id="created_by" required />
+          </div>
+          <button type="submit" class="btn btn-primary">Criar</button>
+        </form>
+      </div>
+
+      <div class="col-md-8">
+        <h3>Leilões Ativos</h3>
+        <div id="auctionsList" class="list-group">
+          <!-- Auctions will appear here -->
+        </div>
+
+        <div id="auctionDetail" class="mt-4 d-none border p-3">
+          <h4 id="detailTitle"></h4>
+          <p id="detailDesc"></p>
+          <p>Preço Atual: R$ <span id="detailPrice"></span></p>
+          <p>Maior Lance: <span id="detailBidder"></span></p>
+          <p>Status: <span id="detailStatus"></span></p>
+
+          <h5>Dar Lance</h5>
+          <div class="input-group mb-3">
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Seu Nome"
+              id="bidUser"
+            />
+            <input
+              type="number"
+              class="form-control"
+              placeholder="Valor"
+              id="bidAmount"
+            />
+            <button class="btn btn-success" onclick="placeBid()">Lance</button>
+          </div>
+
+          <h6>Histórico de Lances</h6>
+          <ul id="bidsList" class="list-group"></ul>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const socket = io();
+      let currentAuctionId = null;
+
+      // Load auctions
+      async function loadAuctions() {
+        const res = await fetch("/view-auctions");
+        const auctions = await res.json();
+        const list = document.getElementById("auctionsList");
+        list.innerHTML = "";
+        auctions.forEach((a) => {
+          const item = document.createElement("a");
+          item.className = "list-group-item list-group-item-action";
+          item.innerHTML = `<b>${a.title}</b> - R$ ${
+            a.current_price
+          } (Fim: ${new Date(a.end_time * 1000).toLocaleTimeString()})`;
+          item.onclick = () => showAuction(a.id);
+          list.appendChild(item);
+        });
+      }
+
+      document.getElementById("createAuctionForm").onsubmit = async (e) => {
+        e.preventDefault();
+        const data = {
+          title: document.getElementById("title").value,
+          description: document.getElementById("description").value,
+          start_price: document.getElementById("start_price").value,
+          duration: document.getElementById("duration").value,
+          created_by: document.getElementById("created_by").value,
+        };
+
+        await fetch("/create-auction", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+
+        loadAuctions();
+        e.target.reset();
+      };
+
+      async function showAuction(id) {
+        currentAuctionId = id;
+        document.getElementById("auctionDetail").classList.remove("d-none");
+
+        const res = await fetch(`/auction/${id}`);
+        const data = await res.json();
+
+        updateDetailView(data);
+      }
+
+      function updateDetailView(data) {
+        if (currentAuctionId != data.id) return;
+
+        document.getElementById("detailTitle").innerText = data.title;
+        document.getElementById("detailDesc").innerText = data.description;
+        document.getElementById("detailPrice").innerText = data.current_price;
+        document.getElementById("detailBidder").innerText =
+          data.highest_bidder || "Ninguém";
+        document.getElementById("detailStatus").innerText = data.status;
+
+        const bidsList = document.getElementById("bidsList");
+        bidsList.innerHTML = "";
+        if (data.bids) {
+          data.bids.forEach((bid) => {
+            const li = document.createElement("li");
+            li.className = "list-group-item";
+            li.innerText = `${bid[0]}: R$ ${bid[1]}`;
+            bidsList.appendChild(li);
+          });
+        }
+      }
+
+      async function placeBid() {
+        if (!currentAuctionId) return;
+        const user = document.getElementById("bidUser").value;
+        const amount = parseFloat(document.getElementById("bidAmount").value);
+
+        if (!user || isNaN(amount)) {
+          alert("Preencha nome e valor do lance.");
+          return;
+        }
+
+        const res = await fetch("/place-bid", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            auction_id: currentAuctionId,
+            user: user,
+            amount: amount,
+          }),
+        });
+
+        const result = await res.json();
+        if (!res.ok) {
+          alert(result.error);
+        } else {
+          // Atualiza imediatamente a UI com os dados retornados
+          document.getElementById("detailPrice").innerText =
+            result.current_price;
+          document.getElementById("detailBidder").innerText =
+            result.highest_bidder || "Ninguém";
+          // Limpa o valor para evitar lances repetidos iguais
+          document.getElementById("bidAmount").value = "";
+        }
+      }
+
+      // Socket listeners
+      socket.on("auction_update", (data) => {
+        console.log("Update received:", data);
+        loadAuctions(); // Refresh list to update prices
+        if (currentAuctionId == data.auction_id) {
+          // Refresh details
+          showAuction(data.auction_id);
+        }
+      });
+
+      socket.on("auction_ended", (data) => {
+        alert(`Leilão ${data.auction_id} finalizado!`);
+        loadAuctions();
+      });
+
+      loadAuctions();
+    </script>
+  </body>
+</html>

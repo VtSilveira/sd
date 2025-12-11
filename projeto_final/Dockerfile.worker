@@ -1,0 +1,7 @@
+FROM python:3.9-slim
+WORKDIR /service
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY worker/ .
+CMD ["python", "worker.py"]
+
