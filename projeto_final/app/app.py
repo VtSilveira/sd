@@ -9,10 +9,14 @@ import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Redis URL for SocketIO message queue
+redis_url = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/0"
+# Use threading async mode to keep background threads predictable in compose, enable message queue for scaling
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", message_queue=redis_url)
 
 # Background thread to listen to Redis PubSub
 def redis_listener():
+    print("Redis listener started", flush=True)
     r = redis.Redis(host=os.getenv('REDIS_HOST', 'localhost'),
                     port=int(os.getenv('REDIS_PORT', 6379)),
                     db=int(os.getenv('REDIS_DB', 0)),
@@ -28,16 +32,17 @@ def redis_listener():
 
 # Background thread to check for expired auctions
 def auction_monitor():
+    print("Auction monitor started", flush=True)
     while True:
         try:
             active_auctions = db.get_all_active_auctions()
             now = time.time()
             for auction in active_auctions:
                 if now > auction['end_time']:
-                    print(f"Closing auction {auction['id']}")
+                    print(f"Closing auction {auction['id']} (expired at {auction['end_time']}, now {now})")
                     db.close_auction(auction['id'])
                     socketio.emit('auction_ended', {'auction_id': auction['id']})
-            time.sleep(5)
+            time.sleep(2)
         except Exception as e:
             print(f"Error in monitor: {e}")
             time.sleep(5)
@@ -116,7 +121,9 @@ def place_bid():
 
 if __name__ == '__main__':
     # Start background threads using socketio helper for compatibility
+    print("Starting background tasks", flush=True)
     socketio.start_background_task(redis_listener)
     socketio.start_background_task(auction_monitor)
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
+    print("Starting Flask app", flush=True)
+    socketio.run(app, debug=True, use_reloader=False, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
 

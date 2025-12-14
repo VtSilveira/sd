@@ -5,6 +5,7 @@ metadata:
 data:
   REDIS_HOST: "redis-service"
   REDIS_PORT: "6379"
+  GEMINI_MODEL: "gemini-2.5-flash"
 ---
 apiVersion: v1
 kind: Secret
@@ -12,5 +13,5 @@ metadata:
   name: app-secrets
 type: Opaque
 stringData:
-  OPENAI_API_KEY: "your-api-key-here"
+  GEMINI_API_KEY: "your-gemini-key-here"
   DISCORD_WEBHOOK_URL: "your-webhook-url-here"
